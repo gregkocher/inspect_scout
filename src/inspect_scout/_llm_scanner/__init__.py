@@ -1,3 +1,4 @@
+from ._llm_action_scanner import llm_action_scanner
 from ._llm_scanner import llm_scanner
 from ._reducer import ResultReducer
 from .answer import Answer, answer_type
@@ -13,6 +14,7 @@ __all__ = [
     "ResultReducer",
     "answer_type",
     "generate_answer",
+    "llm_action_scanner",
     "llm_scanner",
     "parse_answer",
     "scanner_prompt",
