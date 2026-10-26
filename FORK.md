@@ -37,6 +37,17 @@ nothing is lost in the conversion.
 - Guide: [examples/sources/openai_chat/README.md](examples/sources/openai_chat/README.md)
 - Script: [examples/sources/openai_chat/openai_to_scout.py](examples/sources/openai_chat/openai_to_scout.py)
 
+## Two-stage LLM judging
+
+Two whole-transcript scanners meant as a cascade: a cheap, high-recall triage
+scanner and a careful review scanner with a calibrated 1-10 severity rubric,
+plus a script that runs triage on everything and review on the escalated
+transcripts and a random audit sample of the rest.
+
+- Guide: [examples/two_stage_judge/README.md](examples/two_stage_judge/README.md)
+- Scanners: [examples/two_stage_judge/two_stage_scanners.py](examples/two_stage_judge/two_stage_scanners.py)
+- Cascade script: [examples/two_stage_judge/run_two_stage.py](examples/two_stage_judge/run_two_stage.py)
+
 ## Installing this fork
 
 ```bash
