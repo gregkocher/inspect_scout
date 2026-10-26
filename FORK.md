@@ -42,6 +42,6 @@ nothing is lost in the conversion.
 ```bash
 git clone https://github.com/gregkocher/inspect_scout
 cd inspect_scout
-git checkout feat/llm-action-scanner
+git checkout feat/llm-online-monitor
 python3 -m venv .venv && .venv/bin/pip install -e .
 ```
