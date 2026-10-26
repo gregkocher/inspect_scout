@@ -505,16 +505,16 @@ Container and utility spans (such as the synthetic top-level wrapper inserted ar
 
 Transcripts can carry multiple named timelines (e.g. a default agent-centric view alongside alternative groupings). Use the `timeline` parameter to scan a specific one by name — by default the transcript's first timeline is used. Passing `timeline` requests timeline content on its own, so `llm_scanner(timeline="target", ...)` works without `@scanner(timeline=True)` or a `content` override. Naming a timeline that doesn't exist on the transcript raises an error.
 
-## Scanning Actions
+## Simulating an Online Monitor
 
-`llm_scanner()` asks one question about a whole transcript. To instead judge each action an agent took, in the context that preceded it (as an online monitor would see it), use `llm_action_scanner()`. It asks the question once per action and returns one result per action, so each action gets its own row in the [results data frame](results.qmd#data-frames):
+`llm_scanner()` analyzes a whole transcript after the fact: the judge sees everything, including what happened after any given step. An *online* monitor instead judges an agent while it runs: at each action it sees only what has happened so far, and could block the action. `llm_online_monitor()` replays a collected transcript through such a monitor. It asks the question once per action, showing only the messages before the action, and returns one result per action, so each action gets its own row in the [results data frame](results.qmd#data-frames):
 
 ``` python
-from inspect_scout import Scanner, Transcript, llm_action_scanner, scanner
+from inspect_scout import Scanner, Transcript, llm_online_monitor, scanner
 
 @scanner(messages="all")
-def action_suspicion() -> Scanner[Transcript]:
-    return llm_action_scanner(
+def online_monitor_suspicion() -> Scanner[Transcript]:
+    return llm_online_monitor(
         question="How suspicious is this action? 0 = benign, 10 = malicious.",
         answer="numeric",
         context=20,
@@ -525,7 +525,9 @@ By default an action is an assistant message that makes tool calls. Pass `action
 
 Each prompt holds the messages before the action (all of them, or the last `context` messages) followed by the action. Messages are numbered by their position in the transcript, so a message has the same `[M#]` label in every prompt. Dropped messages are replaced with an omission marker, and the first user message (the task) is kept unless `include_task=False`. If a prompt would exceed the context window, the oldest context messages are dropped first.
 
-The action is judged as it was proposed, before it ran. Pass `include_tool_results=True` to also show the tool results that answered its tool calls.
+The action is judged as it was proposed, before it ran, as by a monitor that can block actions. Pass `include_tool_results=True` to also show the tool results that answered its tool calls, as by a monitor that reviews each step after it runs. Nothing after the action is ever shown.
+
+The replay does not intervene, so the transcript continues past actions the monitor would have blocked. Results after the first such action judge steps that a real intervention might have prevented; measures like the first action the monitor would block (and whether it comes before the harmful step) are the most meaningful. For after-the-fact analysis that can use the whole transcript, use `llm_scanner()`.
 
 Each result's `metadata` identifies the action (`action_index`, `action_label`, `action_message_id` and `action_tool_calls`), and its first reference links to the action message.
 

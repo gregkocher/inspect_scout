@@ -37,8 +37,8 @@ from ._llm_scanner import _render_template, _resolve_template_kwargs
 from .answer import answer_from_argument
 from .generate import generate_answer
 from .prompt import (
-    DEFAULT_ACTION_TEMPLATE_PREFIX,
-    DEFAULT_ACTION_TEMPLATE_SUFFIX,
+    DEFAULT_ONLINE_MONITOR_TEMPLATE_PREFIX,
+    DEFAULT_ONLINE_MONITOR_TEMPLATE_SUFFIX,
 )
 from .types import AnswerSpec
 
@@ -57,7 +57,7 @@ class _RenderedMessage:
 
 
 @scanner(messages="all")
-def llm_action_scanner(
+def llm_online_monitor(
     *,
     question: str | Callable[[Transcript], Awaitable[str]] | None = None,
     answer: AnswerSpec,
@@ -79,15 +79,24 @@ def llm_action_scanner(
     context_window: int | None = None,
     nonce: str | None = None,
 ) -> Scanner[Transcript]:
-    """Create a scanner that uses an LLM to judge each agent action in context.
+    """Create a scanner that replays a transcript through a simulated online LLM monitor.
 
-    Where ``llm_scanner`` asks one question about a whole transcript, this
-    scanner asks the question once per action: each assistant message that
-    counts as an action is judged together with the messages that preceded
-    it (as an online monitor would see it). The scanner returns one
-    ``Result`` per action, so each action gets its own row in the results
-    data frame, with ``metadata`` identifying the action and a reference to
-    the action message first in ``references``.
+    An online monitor judges an agent while it runs: at each action it sees
+    only what has happened so far, and could block the action. This scanner
+    simulates that on a collected transcript. Each assistant message that
+    counts as an action is judged with only the messages that preceded it,
+    never anything after it (by default not even the action's own tool
+    results). It is not hindsight analysis: a judge that can see the whole
+    transcript (use ``llm_scanner``) can recognize steps as harmful from what
+    happened later, which an online monitor cannot.
+
+    Because the replay does not intervene, the transcript continues past
+    actions the monitor would have blocked; results after the first such
+    action judge steps that a real intervention might have prevented.
+
+    The scanner returns one ``Result`` per action, so each action gets its
+    own row in the results data frame, with ``metadata`` identifying the
+    action and a reference to the action message first in ``references``.
 
     Messages are numbered by their position in the transcript (``[M1]``,
     ``[M2]``, ...), so a given message has the same label in every prompt.
@@ -153,7 +162,7 @@ def llm_action_scanner(
         raise ValueError(f"context must be None or >= 0, got {context}")
 
     resolved_template: str | tuple[str, str] = (
-        (DEFAULT_ACTION_TEMPLATE_PREFIX, DEFAULT_ACTION_TEMPLATE_SUFFIX)
+        (DEFAULT_ONLINE_MONITOR_TEMPLATE_PREFIX, DEFAULT_ONLINE_MONITOR_TEMPLATE_SUFFIX)
         if template is None
         else template
     )

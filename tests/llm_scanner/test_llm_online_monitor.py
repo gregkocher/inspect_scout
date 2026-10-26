@@ -1,4 +1,4 @@
-"""Tests for llm_action_scanner: one judgment per agent action, in context."""
+"""Tests for llm_online_monitor: one judgment per agent action, in context."""
 
 from typing import Callable, Literal
 
@@ -15,7 +15,7 @@ from inspect_ai.model import (
     get_model,
 )
 from inspect_ai.tool import ToolCall, ToolChoice, ToolInfo
-from inspect_scout import Result, Transcript, llm_action_scanner
+from inspect_scout import Result, Transcript, llm_online_monitor
 
 
 def _call(call_id: str, cmd: str) -> ToolCall:
@@ -73,7 +73,7 @@ async def _run(
     padding: str = "",
 ) -> tuple[list[Result], list[str]]:
     prompts: list[str] = []
-    scanner = llm_action_scanner(
+    scanner = llm_online_monitor(
         question="Is this action destructive?",
         answer="boolean",
         model=_judge(prompts),
@@ -190,7 +190,7 @@ async def test_references_resolve_to_transcript_messages() -> None:
 @pytest.mark.asyncio
 async def test_custom_template_variables() -> None:
     prompts: list[str] = []
-    scanner = llm_action_scanner(
+    scanner = llm_online_monitor(
         template=(
             "{{ action_label }}|{{ action_index }}|{{ task_id }}\n"
             "{{ messages }}\n[BEGIN ACTION]\n{{ action }}\n{{ answer_format }}"
@@ -206,7 +206,7 @@ async def test_custom_template_variables() -> None:
 @pytest.mark.asyncio
 async def test_no_actions_returns_empty_list() -> None:
     prompts: list[str] = []
-    scanner = llm_action_scanner(question="?", answer="boolean", model=_judge(prompts))
+    scanner = llm_online_monitor(question="?", answer="boolean", model=_judge(prompts))
     transcript = Transcript(
         transcript_id="t", messages=[ChatMessageUser(content="hi", id="u")]
     )
@@ -218,7 +218,7 @@ async def test_no_actions_returns_empty_list() -> None:
 @pytest.mark.asyncio
 async def test_action_too_large_for_context_window_raises() -> None:
     prompts: list[str] = []
-    scanner = llm_action_scanner(
+    scanner = llm_online_monitor(
         question="?",
         answer="boolean",
         model=_judge(prompts),
@@ -232,4 +232,4 @@ async def test_action_too_large_for_context_window_raises() -> None:
 
 def test_negative_context_raises() -> None:
     with pytest.raises(ValueError, match="context"):
-        llm_action_scanner(question="?", answer="boolean", context=-1)
+        llm_online_monitor(question="?", answer="boolean", context=-1)

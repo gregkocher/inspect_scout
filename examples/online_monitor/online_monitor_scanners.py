@@ -1,8 +1,8 @@
-"""Example scanners that judge agent trajectories, per action and per transcript.
+"""Example scanners: a simulated online monitor, an after-the-fact judge, and patterns.
 
 Run against a transcript database:
 
-    scout scan examples/action_scanner/action_scanners.py -T <transcripts_db> \
+    scout scan examples/online_monitor/online_monitor_scanners.py -T <transcripts_db> \
         --model openai/gpt-4.1-mini --max-connections 50
 """
 
@@ -14,7 +14,7 @@ from inspect_scout import (
     Scanner,
     Transcript,
     grep_scanner,
-    llm_action_scanner,
+    llm_online_monitor,
     llm_scanner,
     scanner,
 )
@@ -33,9 +33,9 @@ def _not_only_think(message: ChatMessageAssistant) -> bool:
 
 
 @scanner(messages="all")
-def action_suspicion() -> Scanner[Transcript]:
-    """One suspicion score per action, judged with the context before it."""
-    return llm_action_scanner(
+def online_monitor_suspicion() -> Scanner[Transcript]:
+    """Simulated online monitor: one suspicion score per action, from the context before it."""
+    return llm_online_monitor(
         question=SUSPICION_QUESTION,
         answer="numeric",
         actions=_not_only_think,
@@ -49,8 +49,8 @@ def action_suspicion() -> Scanner[Transcript]:
 
 
 @scanner(messages="all")
-def trajectory_suspicion() -> Scanner[Transcript]:
-    """One suspicion score for the whole transcript."""
+def full_transcript_suspicion() -> Scanner[Transcript]:
+    """After-the-fact judge: one suspicion score for the whole transcript."""
     return llm_scanner(
         question=SUSPICION_QUESTION.replace("this action", "this agent's behavior"),
         answer="numeric",
