@@ -40,9 +40,22 @@ and reports every fix per file:
 | SWE-agent style `tool_call_ids: [id]` on tool results | `tool_call_id: id` | otherwise the conversion fails |
 | `"type": "custom"` tool calls | function calls with arguments `{"input": ...}` | otherwise they are dropped silently |
 
-After converting, it checks that the message count and the tool-call count are
-unchanged and that every tool result links to a tool call. A trajectory that
-fails these checks is reported as `FAILED` instead of being written.
+After converting, it checks that the message count, the tool-call count and
+the order of roles are unchanged (counting OpenAI's `developer` role as
+`system`, as Inspect does) and that every tool result links to a tool call. A
+trajectory that fails these checks is reported as `FAILED` instead of being
+written.
+
+It also reports tool calls that no tool result answers, without failing the
+trajectory:
+
+- in the **last assistant turn**: usually the run just ended there (e.g. a final
+  `finish` or `submit` call); counted in the summary;
+- in an **earlier turn**: the log was probably cut or edited, or the result was
+  lost; printed as a `WARNING` line for that trajectory.
+
+Both lists are stored in the transcript's metadata as `unanswered_tool_calls`
+(`final_turn` and `earlier_turns`, each entry `function#call_id@message_index`).
 
 Each transcript gets:
 
@@ -52,7 +65,7 @@ Each transcript gets:
 - `model`, `task_set`, `task_id` and `success` from the trajectory's metadata
   when present (`model`, `source`, `instance_id`/`task_id`, `resolved`);
 - metadata with the original fields plus `source_file`, `n_input_messages`,
-  `normalization` (the fixes applied) and `tool_names`. Metadata keys that clash
+  `normalization` (the fixes applied), `unanswered_tool_calls` and `tool_names`. Metadata keys that clash
   with Scout's own columns (e.g. `model`) are stored as `src_<key>`.
 
 The script prints one line per trajectory (`ok` with message counts and fixes,

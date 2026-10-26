@@ -18,8 +18,10 @@ Inspect's own ``inspect_ai.model.messages_from_openai``. This script only:
        - tool calls missing ``"type": "function"``;
        - SWE-agent style ``tool_call_ids: [id]`` on tool results -> standard ``tool_call_id``;
        - ``"type": "custom"`` tool calls (Inspect silently drops them) -> function calls.
-  3. checks every converted trajectory (message, tool-call and tool-result counts and links) and
-     marks the file FAILED instead of writing a silently damaged transcript.
+  3. checks every converted trajectory (message and tool-call counts, role order, and that each
+     tool result links to a call) and marks the file FAILED instead of writing a silently
+     damaged transcript; tool calls that never got a result are reported (not failed), split
+     into the final turn (run ended) and earlier turns (log cut or edited).
 
 Usage:
   python3 openai_to_scout.py <input_dir> <transcripts_db_dir> [--source-type NAME] [--overwrite]
@@ -40,7 +42,12 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, cast
 
-from inspect_ai.model import ChatMessage, messages_from_openai
+from inspect_ai.model import (
+    ChatMessage,
+    ChatMessageAssistant,
+    ChatMessageTool,
+    messages_from_openai,
+)
 from inspect_scout import Transcript, transcripts_db
 from openai.types.chat import ChatCompletionMessageParam
 
@@ -50,6 +57,10 @@ try:  # Scout rejects metadata keys that clash with its own columns (e.g. 'model
     RESERVED = set(reserved_columns())
 except Exception:
     RESERVED = set(Transcript.model_fields)
+
+
+# Inspect reads OpenAI's "developer" role as a system message
+ROLE_ALIASES = {"developer": "system"}
 
 
 # --------------------------------------------------------------------------------------------- reading
@@ -149,6 +160,21 @@ def integrity_problems(
     )
     if n_in != n_out:
         probs.append(f"tool calls {n_in} -> {n_out}")
+    roles_in = [ROLE_ALIASES.get(m.get("role", "?"), m.get("role", "?")) for m in msgs]
+    roles_out = [m.role for m in chat]
+    if roles_in != roles_out:
+        at = next(
+            (
+                i
+                for i, (a, b) in enumerate(zip(roles_in, roles_out, strict=False))
+                if a != b
+            ),
+            min(len(roles_in), len(roles_out)),
+        )
+        probs.append(
+            f"role order changed at message {at}: "
+            f"{roles_in[at : at + 3]} -> {roles_out[at : at + 3]}"
+        )
     call_ids = {
         tc.id for m in chat if m.role == "assistant" for tc in (m.tool_calls or [])
     }
@@ -158,6 +184,27 @@ def integrity_problems(
         ):
             probs.append(f"tool result {m.tool_call_id!r} not linked to a tool call")
     return probs
+
+
+def unanswered_tool_calls(chat: list[ChatMessage]) -> dict[str, list[str]]:
+    """Tool calls that no tool result answers, split by where they occur.
+
+    A call in the last assistant turn usually just means the run ended there
+    (e.g. a final "finish" call). An unanswered call in an earlier turn means
+    the log was cut or edited, or the result was lost.
+    """
+    answered = {m.tool_call_id for m in chat if isinstance(m, ChatMessageTool)}
+    assistants = [
+        (i, m) for i, m in enumerate(chat) if isinstance(m, ChatMessageAssistant)
+    ]
+    last_assistant = assistants[-1][0] if assistants else -1
+    found: dict[str, list[str]] = {"final_turn": [], "earlier_turns": []}
+    for i, message in assistants:
+        for tc in message.tool_calls or []:
+            if tc.id not in answered:
+                where = "final_turn" if i == last_assistant else "earlier_turns"
+                found[where].append(f"{tc.function}#{tc.id}@{i}")
+    return found
 
 
 # ------------------------------------------------------------------------------------------ building
@@ -184,6 +231,7 @@ async def build_transcripts(
                     raise ValueError(
                         "integrity check failed: " + "; ".join(problems[:5])
                     )
+                unanswered = unanswered_tool_calls(chat)
             except Exception as e:  # report and continue, never drop silently
                 report.append(
                     {
@@ -199,6 +247,7 @@ async def build_transcripts(
                 "source_file": rel,
                 "n_input_messages": len(raw_msgs),
                 "normalization": dict(fixes),
+                "unanswered_tool_calls": unanswered,
             }
             model_name = meta.get("model")
             meta = {(f"src_{k}" if k in RESERVED else k): v for k, v in meta.items()}
@@ -238,6 +287,7 @@ async def build_transcripts(
                     "in": len(raw_msgs),
                     "out": len(chat),
                     "fixes": dict(fixes),
+                    "unanswered": unanswered,
                 }
             )
     return transcripts, report
@@ -267,11 +317,21 @@ async def main() -> None:
             print(
                 f"ok      {r['file'][:70]:70s} {r['in']:4d} -> {r['out']:4d}{flag}  {r['fixes'] or ''}"
             )
+            if r["unanswered"]["earlier_turns"]:
+                print(
+                    "        WARNING tool calls with no result before the last turn "
+                    f"(log cut or edited?): {r['unanswered']['earlier_turns'][:5]}"
+                )
         else:
             print(f"FAILED  {r['file']}: {r['error']}")
-    n_ok = sum(r["status"] == "ok" for r in report)
+    ok = [r for r in report if r["status"] == "ok"]
+    n_final = sum(bool(r["unanswered"]["final_turn"]) for r in ok)
+    n_earlier = sum(bool(r["unanswered"]["earlier_turns"]) for r in ok)
     print(
-        f"\n{n_ok}/{len(report)} trajectories written to {a.db_dir}\nView with:  scout view -T {a.db_dir}"
+        f"\n{len(ok)}/{len(report)} trajectories written to {a.db_dir}"
+        f"\nUnanswered tool calls: {n_final} trajectories in the final turn "
+        f"(run ended there), {n_earlier} in earlier turns (see WARNING lines)"
+        f"\nView with:  scout view -T {a.db_dir}"
     )
 
 
